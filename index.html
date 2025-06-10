@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Finance Mapping</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    canvas {
+      max-width: 600px;
+      margin: 30px auto;
+      display: block;
+    }
+    form, #uploadSection {
+      max-width: 600px;
+      margin: 0 auto 20px auto;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    input, button {
+      padding: 10px;
+      font-size: 16px;
+    }
+    #categoryList {
+      max-width: 600px;
+      margin: 20px auto;
+    }
+    #categoryList div {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 6px;
+    }
+    #categoryList button {
+      margin-left: 5px;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Spending Overview</h2>
+
+<!-- Input Form -->
+<form id="expenseForm">
+  <input type="text" id="categoryInput" placeholder="Category" required />
+  <input type="number" id="amountInput" placeholder="Amount" required />
+  <button type="submit">Add/Update Expense</button>
+</form>
+
+<!-- Upload Section -->
+<div id="uploadSection">
+  <label for="fileInput">Upload CSV or Excel file:</label>
+  <input type="file" id="fileInput" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" />
+</div>
+
+<!-- Category List for Edit/Delete -->
+<div id="categoryList"></div>
+
+<!-- Pie Chart -->
+<canvas id="pieChart"></canvas>
+
+<!-- Bar Chart -->
+<canvas id="barChart"></canvas>
+
+<script>
+  // Load data from localStorage or fallback to default
+  const savedData = JSON.parse(localStorage.getItem('financeData'));
+  let categories = savedData?.categories || ["Rent", "Groceries", "Utilities", "Entertainment", "Transport"];
+  let amounts = savedData?.amounts || [1200, 450, 150, 200, 100];
+
+  const pieCtx = document.getElementById('pieChart').getContext('2d');
+  const pieChart = new Chart(pieCtx, {
+    type: 'pie',
+    data: {
+      labels: [...categories],
+      datasets: [{
+        data: [...amounts],
+        backgroundColor: ['#ff6384', '#36a2eb', '#cc65fe', '#ffce56', '#00c853'],
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: {
+          display: true,
+          text: 'Spending by Category'
+        }
+      }
+    }
+  });
+
+  const barCtx = document.getElementById('barChart').getContext('2d');
+  const barChart = new Chart(barCtx, {
+    type: 'bar',
+    data: {
+      labels: ["Jan", "Feb", "Mar", "Apr", "May"],
+      datasets: [{
+        label: 'Total Spending',
+        data: [2200, 2100, 1900, 2500, 2300],
+        backgroundColor: '#42a5f5'
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: {
+          display: true,
+          text: 'Monthly Spending Trend'
+        }
+      }
+    }
+  });
+
+  // Save current data to localStorage
+  function saveData() {
+    localStorage.setItem('financeData', JSON.stringify({
+      categories: pieChart.data.labels,
+      amounts: pieChart.data.datasets[0].data
+    }));
+  }
+
+  const form = document.getElementById('expenseForm');
+  const categoryList = document.getElementById('categoryList');
+
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    const category = document.getElementById('categoryInput').value.trim();
+    const amount = parseFloat(document.getElementById('amountInput').value);
+
+    if (!category || isNaN(amount) || amount <= 0) {
+      alert("Please enter a valid category and amount.");
+      return;
+    }
+
+    addOrUpdateCategory(category, amount);
+    form.reset();
+  });
+
+  // Add or update category data and update UI/chart/localStorage
+  function addOrUpdateCategory(category, amount) {
+    const index = pieChart.data.labels.indexOf(category);
+    if (index !== -1) {
+      // Update existing category amount
+      pieChart.data.datasets[0].data[index] = amount;
+    } else {
+      // Add new category
+      pieChart.data.labels.push(category);
+      pieChart.data.datasets[0].data.push(amount);
+      const randomColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+      pieChart.data.datasets[0].backgroundColor.push(randomColor);
+    }
+    pieChart.update();
+    saveData();
+    updateCategoryList();
+  }
+
+  function updateCategoryList() {
+    categoryList.innerHTML = '';
+    pieChart.data.labels.forEach((label, index) => {
+      const amount = pieChart.data.datasets[0].data[index];
+
+      const item = document.createElement('div');
+
+      const text = document.createElement('span');
+      text.textContent = `${label}: $${amount}`;
+
+      const editBtn = document.createElement('button');
+      editBtn.textContent = 'Edit';
+      editBtn.onclick = () => {
+        document.getElementById('categoryInput').value = label;
+        document.getElementById('amountInput').value = amount;
+      };
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.onclick = () => {
+        pieChart.data.labels.splice(index, 1);
+        pieChart.data.datasets[0].data.splice(index, 1);
+        pieChart.data.datasets[0].backgroundColor.splice(index, 1);
+        pieChart.update();
+        saveData();
+        updateCategoryList();
+      };
+
+      const buttonGroup = document.createElement('div');
+      buttonGroup.appendChild(editBtn);
+      buttonGroup.appendChild(deleteBtn);
+
+      item.appendChild(text);
+      item.appendChild(buttonGroup);
+      categoryList.appendChild(item);
+    });
+  }
+
+  // Handle file uploads
+  const fileInput = document.getElementById('fileInput');
+  fileInput.addEventListener('change', function(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const fileName = file.name.toLowerCase();
+
+    if (fileName.endsWith('.csv')) {
+      parseCSVFile(file);
+    } else if (fileName.endsWith('.xls') || fileName.endsWith('.xlsx')) {
+      parseExcelFile(file);
+    } else {
+      alert('Unsupported file type! Please upload a CSV or Excel file.');
+    }
+
+    // Reset file input so same file can be uploaded again if needed
+    fileInput.value = '';
+  });
+
+  function parseCSVFile(file) {
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: function(results) {
+        // Expect CSV with columns: Category, Amount
+        processParsedData(results.data);
+      },
+      error: function(err) {
+        alert('Error parsing CSV: ' + err.message);
+      }
+    });
+  }
+
+  function parseExcelFile(file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, {type: 'array'});
+
+      // Use first sheet
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+
+      // Convert to JSON with header row keys
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, {defval: ""});
+      processParsedData(jsonData);
+    };
+    reader.onerror = function() {
+      alert('Error reading Excel file.');
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  // Process parsed data array [{Category: "...", Amount: "..."}, ...]
+  function processParsedData(dataArray) {
+    if (!dataArray || dataArray.length === 0) {
+      alert('No data found in the file.');
+      return;
+    }
+
+    let newEntries = 0;
+    dataArray.forEach(row => {
+      const category = row['Category']?.toString().trim();
+      const amountStr = row['Amount']?.toString().trim();
+      const amount = parseFloat(amountStr);
+
+      if (category && !isNaN(amount) && amount > 0) {
+        addOrUpdateCategory(category, amount);
+        newEntries++;
+      }
+    });
+
+    if (newEntries === 0) {
+      alert('No valid "Category" and "Amount" data found.');
+    }
+  }
+
+  // Initialize category list on page load
+  updateCategoryList();
+</script>
+
+</body>
+</html>
